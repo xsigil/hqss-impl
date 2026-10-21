@@ -1,16 +1,4 @@
 #!/bin/sh
-echo "============================================================"
-echo " MONOLITH PROTOCOL [HQSS-v4] UNIVERSAL PROVISIONING TOOL"
-echo " Arbitrary m-of-n Shamir Secret Sharing over GF(2^8)"
-echo " Licensed under MIT License | Section 9 Inc."
-echo ""
-echo " Sovereign Physical Escrow Plates (Silver 925 / SUS304 Brass Inlay):"
-echo " -> https://monolith-id.com/"
-echo " Prerequisites: openssl, split, gfsplit, gfcombine, xxd, base64"
-if [ "$DEBUG" -eq 1 ]; then
-    echo " [VERBOSE DEBUG MODE ENABLED]"
-fi
-echo "============================================================"
 set -eu
 
 # --debug オプションの解析
@@ -22,22 +10,26 @@ for arg in "$@"; do
 done
 
 debug_log() {
-    if [ "$DEBUG" -eq 1 ]; then
+    if [ "${DEBUG}" -eq 1 ]; then
         printf "[DEBUG] %s\n" "$*"
     fi
 }
 
 debug_xxd() {
-    if [ "$DEBUG" -eq 1 ]; then
+    if [ "${DEBUG}" -eq 1 ]; then
         xxd "$@"
     fi
 }
 
 echo "============================================================"
-echo " MONOLITH PROTOCOL [HQSS-v4] UNIVERSAL PROVISIONING TOOL"
+echo " MONOLITH PROTOCOL [HQSS-v4.1] UNIVERSAL PROVISIONING TOOL"
 echo " Arbitrary m-of-n Shamir Secret Sharing over GF(2^8)"
+echo " Licensed under MIT License | Section 9 Inc."
+echo ""
+echo " Sovereign Physical Escrow Plates (Silver 925 / SUS304 Brass Inlay):"
+echo " -> https://monolith-id.com/"
 echo " Prerequisites: openssl, split, gfsplit, gfcombine, xxd, base64"
-if [ "$DEBUG" -eq 1 ]; then
+if [ "${DEBUG}" -eq 1 ]; then
     echo " [VERBOSE DEBUG MODE ENABLED]"
 fi
 echo "============================================================"
@@ -137,32 +129,34 @@ openssl enc -aes-256-cbc -salt -pbkdf2 -iter 100000 \
 
 CIPHER_SIZE=$(wc -c < "${WORK_DIR}/ciphertext.bin" | tr -d ' ')
 debug_log "1: Ciphertext created (${CIPHER_SIZE} bytes)"
-if [ "$DEBUG" -eq 1 ]; then
+if [ "${DEBUG}" -eq 1 ]; then
     head -c 32 "${WORK_DIR}/ciphertext.bin" | debug_xxd
 fi
 
 # 5. 手順 2: split -n 10 による均等10スライス
+# HQSS-v4.1: part_00 (M0) を物理プレート(コアペイロード)に隔離し、
+# part_01..part_09 (M1..M9) をクラウドバンドルへ配置
 printf "\n[*] [STEP 2] Slicing ciphertext into 10 partitions via split -n 10...\n"
 split -n 10 -d "${WORK_DIR}/ciphertext.bin" "${WORK_DIR}/part_"
 
-cat "${WORK_DIR}/part_00" \
-    "${WORK_DIR}/part_01" \
+cat "${WORK_DIR}/part_01" \
     "${WORK_DIR}/part_02" \
     "${WORK_DIR}/part_03" \
     "${WORK_DIR}/part_04" \
     "${WORK_DIR}/part_05" \
     "${WORK_DIR}/part_06" \
     "${WORK_DIR}/part_07" \
-    "${WORK_DIR}/part_08" > "${WORK_DIR}/m0_to_m8.bin"
+    "${WORK_DIR}/part_08" \
+    "${WORK_DIR}/part_09" > "${WORK_DIR}/m1_to_m9.bin"
 
-M0_M8_SIZE=$(wc -c < "${WORK_DIR}/m0_to_m8.bin" | tr -d ' ')
-M9_SIZE=$(wc -c < "${WORK_DIR}/part_09" | tr -d ' ')
-M9_HEX=$(xxd -p "${WORK_DIR}/part_09" | tr -d '\n')
-debug_log "2: Part M0..M8 concatenated: ${M0_M8_SIZE} bytes"
-debug_log "2: Part M9: ${M9_SIZE} bytes (Hex: ${M9_HEX})"
+M1_M9_SIZE=$(wc -c < "${WORK_DIR}/m1_to_m9.bin" | tr -d ' ')
+M0_SIZE=$(wc -c < "${WORK_DIR}/part_00" | tr -d ' ')
+M0_HEX=$(head -c 16 "${WORK_DIR}/part_00" | xxd -p | tr -d '\n')
+debug_log "2: Part M1..M9 concatenated: ${M1_M9_SIZE} bytes"
+debug_log "2: Part M0 isolated: ${M0_SIZE} bytes (Header prefix: ${M0_HEX})"
 
-# 6. 手順 3: 可変長ランダムソルト (0..4095バイト) 生成と M0..M8 結合
-printf "\n[*] [STEP 3] Synthesizing CSPRNG salt mask (0..4095 bytes) & appending to M0..M8...\n"
+# 6. 手順 3: 可変長ランダムソルト (0..4095バイト) 生成と M1..M9 結合
+printf "\n[*] [STEP 3] Synthesizing CSPRNG salt mask (0..4095 bytes) & appending to M1..M9...\n"
 RAND_HEX=$(od -An -N2 -tx1 /dev/urandom | tr -d ' \n')
 SALT_LEN=$(( 0x${RAND_HEX} % 4096 ))
 
@@ -172,25 +166,25 @@ else
     touch "${WORK_DIR}/rand_salt.bin"
 fi
 
-cat "${WORK_DIR}/m0_to_m8.bin" "${WORK_DIR}/rand_salt.bin" > "monolith_cloud_bundle.bin"
+cat "${WORK_DIR}/m1_to_m9.bin" "${WORK_DIR}/rand_salt.bin" > "monolith_cloud_bundle.bin"
 chmod 644 "monolith_cloud_bundle.bin"
 
 CLOUD_SIZE=$(wc -c < "monolith_cloud_bundle.bin" | tr -d ' ')
 debug_log "3: Salt length: ${SALT_LEN} bytes (Hex: $(printf '0x%08x' ${SALT_LEN}))"
-debug_log "3: Cloud bundle created: ${CLOUD_SIZE} bytes (M0..M8: ${M0_M8_SIZE} + Salt: ${SALT_LEN})"
-if [ "$DEBUG" -eq 1 ]; then
+debug_log "3: Cloud bundle created: ${CLOUD_SIZE} bytes (M1..M9: ${M1_M9_SIZE} + Salt: ${SALT_LEN})"
+if [ "${DEBUG}" -eq 1 ]; then
     debug_log "3: Cloud bundle tail (last 16 bytes):"
     tail -c 16 "monolith_cloud_bundle.bin" | debug_xxd
 fi
 
-# 7. 手順 4: コアペイロードの作成 (M9 + 4byte uint32 ビッグエンディアン)
-printf "\n[*] [STEP 4] Assembling core payload (M9 + 4-byte big-endian uint32 footer)...\n"
+# 7. 手順 4: コアペイロードの作成 (M0 + 4byte uint32 ビッグエンディアン)
+printf "\n[*] [STEP 4] Assembling core payload (M0 + 4-byte big-endian uint32 footer)...\n"
 printf "%08x" "${SALT_LEN}" | xxd -r -p > "${WORK_DIR}/len_footer.bin"
-cat "${WORK_DIR}/part_09" "${WORK_DIR}/len_footer.bin" > "${WORK_DIR}/core_payload.bin"
+cat "${WORK_DIR}/part_00" "${WORK_DIR}/len_footer.bin" > "${WORK_DIR}/core_payload.bin"
 
 CORE_SIZE=$(wc -c < "${WORK_DIR}/core_payload.bin" | tr -d ' ')
 debug_log "4: Core payload assembled (${CORE_SIZE} bytes):"
-if [ "$DEBUG" -eq 1 ]; then
+if [ "${DEBUG}" -eq 1 ]; then
     debug_xxd "${WORK_DIR}/core_payload.bin"
 fi
 
@@ -198,7 +192,7 @@ fi
 printf "\n[*] [STEP 5] Dispersing core payload via gfsplit over GF(2^8) (${THRESH_M}-of-${TOTAL_N})...\n"
 gfsplit -n "${THRESH_M}" -m "${TOTAL_N}" "${WORK_DIR}/core_payload.bin" "${WORK_DIR}/share"
 
-if [ "$DEBUG" -eq 1 ]; then
+if [ "${DEBUG}" -eq 1 ]; then
     debug_log "5: Generated share files by gfsplit:"
     ls -l "${WORK_DIR}"/share.*
 fi
@@ -214,7 +208,7 @@ gfcombine -o "${WORK_DIR}/test_reconstructed_core.bin" ${TEST_SHARES}
 ORIGINAL_HASH=$(openssl dgst -sha256 "${WORK_DIR}/core_payload.bin" | awk '{print $NF}')
 VERIFIED_HASH=$(openssl dgst -sha256 "${WORK_DIR}/test_reconstructed_core.bin" | awk '{print $NF}')
 
-if [ "$DEBUG" -eq 1 ]; then
+if [ "${DEBUG}" -eq 1 ]; then
     debug_log "6: Reconstructed core payload hex dump:"
     debug_xxd "${WORK_DIR}/test_reconstructed_core.bin"
     debug_log "6: Original Core SHA256: ${ORIGINAL_HASH}"
@@ -232,17 +226,19 @@ echo "[✓] Core payload mathematically verified across threshold ${THRESH_M}."
 SUBMISSION_FILE="monolith_order_submission.txt"
 cat << EOF > "${SUBMISSION_FILE}"
 ============================================================
- MONOLITH ID | HQSS-v4 SOVEREIGN ORDER SUBMISSION
- Master Secret Sealing Specification
+ MONOLITH ID | HQSS-v4.1 SOVEREIGN ORDER SUBMISSION
+ Master Secret Sealing Specification (M0 Isolated Architecture)
  Target: Suite of ${TOTAL_N} Physical Plates (Threshold: ${THRESH_M}-of-${TOTAL_N})
  Timestamp: $(date -u '+%Y-%m-%d %H:%M:%SZ')
  Cloud Bundle Salt Length: ${SALT_LEN} bytes
 ============================================================
 
 [MATHEMATICAL GUARANTEE]
-All shares below represent only the sealed core payload (P_core).
+All shares below represent only the sealed core payload (P_core containing M0).
 Even with possession of all ${TOTAL_N} physical shares and the cloud bundle,
 the master secret CANNOT be recovered without the client's AES-256 passphrase.
+Furthermore, the cloud bundle alone contains zero PBKDF2 salt or IV, mathematically
+blocking offline dictionary attacks and known-plaintext validation.
 
 --- BEGIN MONOLITH DISPERSION MATRIX ---
 EOF
@@ -270,7 +266,7 @@ chmod 600 "${SUBMISSION_FILE}"
 
 echo ""
 echo "------------------------------------------------------------"
-echo "[SUCCESS] HQSS-v4 PROVISIONING COMPLETE (${THRESH_M}-of-${TOTAL_N} CONFIGURATION)"
+echo "[SUCCESS] HQSS-v4.1 PROVISIONING COMPLETE (${THRESH_M}-of-${TOTAL_N} CONFIGURATION)"
 echo "------------------------------------------------------------"
 echo ""
 echo "[A] CLOUD BUNDLE (Deploy to personal S3 / Google Drive / Public host):"
@@ -284,16 +280,6 @@ echo ""
 echo "[C] COMPLETE MONOLITH SUITE ORDER DISPATCH FILE:"
 echo "    -> ./${SUBMISSION_FILE}"
 echo ""
-echo "============================================================"
-echo "[ACTION REQUIRED] DISPATCH TO MONOLITH FORGING STUDIO:"
-echo "Encrypt the submission file using MONOLITH Public GnuPG Key and send to:"
-echo "Recipient: office@section-9.sh"
-echo ""
-echo "Example GPG Encryption Command:"
-echo "$ gpg --armor --encrypt --recipient office@section-9.sh ${SUBMISSION_FILE}"
-echo "Then transmit ${SUBMISSION_FILE}.asc via your preferred secure channel."
-echo "============================================================"
-
 echo "============================================================"
 echo "[ACTION REQUIRED] DISPATCH TO MONOLITH FORGING STUDIO:"
 echo "Encrypt the submission file using MONOLITH Public GnuPG Key and send to:"

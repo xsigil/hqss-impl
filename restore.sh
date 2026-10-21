@@ -1,16 +1,4 @@
 #!/bin/sh
-echo "============================================================"
-echo " MONOLITH PROTOCOL [HQSS-v4] UNIVERSAL RECONSTRUCTION TOOL"
-echo " Arbitrary m-of-n Shamir Secret Sharing Restoration"
-echo " Licensed under MIT License | Section 9 Inc."
-echo ""
-echo " Sovereign Physical Escrow Plates (Silver 925 / SUS304 Brass Inlay):"
-echo " -> https://monolith-id.com/"
-echo " Prerequisites: openssl, gfcombine, xxd, base64, od, tail, head"
-if [ "$DEBUG" -eq 1 ]; then
-    echo " [VERBOSE DEBUG MODE ENABLED]"
-fi
-echo "============================================================"
 set -eu
 
 # --debug オプションの解析
@@ -22,22 +10,26 @@ for arg in "$@"; do
 done
 
 debug_log() {
-    if [ "$DEBUG" -eq 1 ]; then
+    if [ "${DEBUG}" -eq 1 ]; then
         printf "[DEBUG] %s\n" "$*"
     fi
 }
 
 debug_xxd() {
-    if [ "$DEBUG" -eq 1 ]; then
+    if [ "${DEBUG}" -eq 1 ]; then
         xxd "$@"
     fi
 }
 
 echo "============================================================"
-echo " MONOLITH PROTOCOL [HQSS-v4] UNIVERSAL RECONSTRUCTION TOOL"
+echo " MONOLITH PROTOCOL [HQSS-v4.1] UNIVERSAL RECONSTRUCTION TOOL"
 echo " Arbitrary m-of-n Shamir Secret Sharing Restoration"
+echo " Licensed under MIT License | Section 9 Inc."
+echo ""
+echo " Sovereign Physical Escrow Plates (Silver 925 / SUS304 Brass Inlay):"
+echo " -> https://monolith-id.com/"
 echo " Prerequisites: openssl, gfcombine, xxd, base64, od, tail, head"
-if [ "$DEBUG" -eq 1 ]; then
+if [ "${DEBUG}" -eq 1 ]; then
     echo " [VERBOSE DEBUG MODE ENABLED]"
 fi
 echo "============================================================"
@@ -112,7 +104,7 @@ printf "\n[*] [RESTORE 1] Reconstructing core payload via gfcombine -o...\n"
 gfcombine -o "${WORK_DIR}/reconstructed_core.bin" ${SHARE_FILE_LIST}
 
 TOTAL_CORE_LEN=$(wc -c < "${WORK_DIR}/reconstructed_core.bin" | tr -d ' ')
-if [ "$DEBUG" -eq 1 ]; then
+if [ "${DEBUG}" -eq 1 ]; then
     debug_log "R1: Reconstructed core payload (${TOTAL_CORE_LEN} bytes):"
     debug_xxd "${WORK_DIR}/reconstructed_core.bin"
 fi
@@ -122,26 +114,26 @@ if [ "${TOTAL_CORE_LEN}" -lt 4 ]; then
     exit 1
 fi
 
-# 復元手順 2: 末尾4バイトからソルト長を取得し、M9を抽出
-printf "\n[*] [RESTORE 2] Parsing 4-byte footer and extracting M9...\n"
-M9_LEN=$(( TOTAL_CORE_LEN - 4 ))
+# 復元手順 2: 末尾4バイトからソルト長を取得し、M0を抽出 (HQSS-v4.1)
+printf "\n[*] [RESTORE 2] Parsing 4-byte footer and extracting M0...\n"
+M0_LEN=$(( TOTAL_CORE_LEN - 4 ))
 SALT_HEX=$(tail -c 4 "${WORK_DIR}/reconstructed_core.bin" | xxd -p | tr -d '\n')
 SALT_LEN=$(( 0x${SALT_HEX} ))
 
 debug_log "R2: Parsed salt length: ${SALT_LEN} bytes (Hex: 0x${SALT_HEX})"
 
-if [ "${M9_LEN}" -gt 0 ]; then
-    head -c "${M9_LEN}" "${WORK_DIR}/reconstructed_core.bin" > "${WORK_DIR}/part_09.bin"
+if [ "${M0_LEN}" -gt 0 ]; then
+    head -c "${M0_LEN}" "${WORK_DIR}/reconstructed_core.bin" > "${WORK_DIR}/part_00.bin"
 else
-    touch "${WORK_DIR}/part_09.bin"
+    touch "${WORK_DIR}/part_00.bin"
 fi
 
-if [ "$DEBUG" -eq 1 ]; then
-    debug_log "R2: Extracted M9 (${M9_LEN} bytes):"
-    debug_xxd "${WORK_DIR}/part_09.bin"
+if [ "${DEBUG}" -eq 1 ]; then
+    debug_log "R2: Extracted M0 (${M0_LEN} bytes):"
+    debug_xxd "${WORK_DIR}/part_00.bin"
 fi
 
-# 復元手順 3: クラウドバンドルの末尾からソルトを剥離して M0〜M8 を復元
+# 復元手順 3: クラウドバンドルの末尾からソルトを剥離して M1〜M9 を復元
 printf "\n[*] [RESTORE 3] Stripping trailing salt mask (${SALT_LEN} bytes) from cloud bundle...\n"
 TOTAL_CLOUD_LEN=$(wc -c < "${CLOUD_PATH}" | tr -d ' ')
 if [ "${TOTAL_CLOUD_LEN}" -lt "${SALT_LEN}" ]; then
@@ -149,17 +141,17 @@ if [ "${TOTAL_CLOUD_LEN}" -lt "${SALT_LEN}" ]; then
     exit 1
 fi
 
-M0_M8_LEN=$(( TOTAL_CLOUD_LEN - SALT_LEN ))
-head -c "${M0_M8_LEN}" "${CLOUD_PATH}" > "${WORK_DIR}/m0_to_m8.bin"
+M1_M9_LEN=$(( TOTAL_CLOUD_LEN - SALT_LEN ))
+head -c "${M1_M9_LEN}" "${CLOUD_PATH}" > "${WORK_DIR}/m1_to_m9.bin"
 
-debug_log "R3: Recovered M0..M8 (${M0_M8_LEN} bytes = Cloud: ${TOTAL_CLOUD_LEN} - Salt: ${SALT_LEN})"
+debug_log "R3: Recovered M1..M9 (${M1_M9_LEN} bytes = Cloud: ${TOTAL_CLOUD_LEN} - Salt: ${SALT_LEN})"
 
-# 復元手順 4: 完全暗号文を結合・復元
-printf "\n[*] [RESTORE 4] Reassembling sealed AES-256 ciphertext (cat M0..M8 + M9)...\n"
-cat "${WORK_DIR}/m0_to_m8.bin" "${WORK_DIR}/part_09.bin" > "${WORK_DIR}/restored_ciphertext.bin"
+# 復元手順 4: 完全暗号文を結合・復元 (HQSS-v4.1: cat M0 + M1..M9)
+printf "\n[*] [RESTORE 4] Reassembling sealed AES-256 ciphertext (cat M0 + M1..M9)...\n"
+cat "${WORK_DIR}/part_00.bin" "${WORK_DIR}/m1_to_m9.bin" > "${WORK_DIR}/restored_ciphertext.bin"
 
 RESTORED_CIPHER_LEN=$(wc -c < "${WORK_DIR}/restored_ciphertext.bin" | tr -d ' ')
-if [ "$DEBUG" -eq 1 ]; then
+if [ "${DEBUG}" -eq 1 ]; then
     debug_log "R4: Reassembled ciphertext (${RESTORED_CIPHER_LEN} bytes):"
     debug_xxd "${WORK_DIR}/restored_ciphertext.bin"
 fi
@@ -195,4 +187,3 @@ else
     echo "[CRITICAL ERROR] Decryption failed. Incorrect passphrase or corrupt share set." >&2
     exit 1
 fi
-
