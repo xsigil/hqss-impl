@@ -28,6 +28,8 @@ echo " Licensed under MIT License | Section 9 Inc."
 echo ""
 echo " Sovereign Physical Escrow Plates (Silver 925 / SUS304 Brass Inlay):"
 echo " -> https://monolith-id.com/"
+echo " Sovereign Vault Allocation & Gateway:"
+echo " -> https://vault.monolith-id.com/"
 echo " Prerequisites: openssl, gfcombine, xxd, base64, od, tail, head"
 if [ "${DEBUG}" -eq 1 ]; then
     echo " [VERBOSE DEBUG MODE ENABLED]"
@@ -180,7 +182,7 @@ if openssl enc -d -aes-256-cbc -salt -pbkdf2 -iter 100000 \
     echo "------------------------------------------------------------"
     echo " Physical Medium Forged & Fulfilled by MONOLITH ID:"
     echo " High-Durability Sterling Silver & SUS304 Brass Inlay Escrow"
-    echo " https://monolith-id.com/"
+    echo " https://monolith-id.com/ | https://vault.monolith-id.com/"
     echo "------------------------------------------------------------"
     echo "============================================================"
 else
